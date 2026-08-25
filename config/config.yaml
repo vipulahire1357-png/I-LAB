@@ -1,0 +1,93 @@
+# CampusNetra product0.3 — Runtime Configuration
+# Edit this file to adapt the system to your camera and environment.
+# No code changes are needed for any of these parameters.
+
+# ── Video Input / Output ─────────────────────────────────────────────────────
+video:
+  input_path: "data/input/10.15.1.188_ch14_20260825124220_20260825131415.mp4"
+  output_path: "data/output/classroom_processed.mp4"
+  # Set to true to show a live OpenCV preview window while processing.
+  # Keep false for headless / batch processing.
+  show_live_window: false
+
+# ── Person Detection ─────────────────────────────────────────────────────────
+detection:
+  # YOLO model to use. "yolo11n.pt" downloads automatically (~5.4 MB).
+  # Switch to "yolo11s.pt" (~18.4 MB) for better recall on distant students.
+  model_path: "yolo11n.pt"
+
+  # Minimum detection confidence. Optimized to 0.25 to maximize student detection recall.
+  confidence_threshold: 0.25
+
+  # IoU threshold for non-maximum suppression.
+  iou_threshold: 0.45
+
+  # Model inference input size (square). 640 = standard, 1280 = higher recall.
+  input_size: 640
+
+  # Inference device. "cpu" for CPU-only. "0" for first CUDA GPU.
+  device: "cpu"
+
+  # Scene profile. "general" = standard detection.
+  # "classroom" = enables a second-pass far-ROI detection for distant students.
+  scene_profile: "general"
+
+# ── Multi-Object Tracking ────────────────────────────────────────────────────
+tracking:
+  tracker_type: "bytetrack"
+
+  # Confidence threshold to activate a new track.
+  track_high_threshold: 0.20
+
+  # Low-confidence threshold for second-stage ByteTrack association.
+  track_low_threshold: 0.05
+
+  # Minimum IoU for matching detections to existing tracks.
+  match_threshold: 0.70
+
+  # Frames a lost track is retained before deletion (45 frames = 3 seconds at 15fps).
+  max_age: 45
+
+  # Consecutive detections required before a track is confirmed (2 frames for fast confirmation).
+  min_hits: 2
+
+# ── Counting Line ────────────────────────────────────────────────────────────
+# The virtual line is defined by two pixel coordinates in the original
+# frame's resolution (1920x1080 for the classroom CCTV camera).
+#
+# Line divides the frame into OUTSIDE and INSIDE half-planes:
+#   OUTSIDE — the entrance/corridor side
+#   INSIDE  — the classroom interior
+#
+# inside_direction controls which half-plane is INSIDE ("positive" or "negative")
+# hysteresis_distance ensures complete crossing and eliminates boundary jitter
+counting:
+  line_start: [0, 195]
+  line_end: [1520, 1080]
+  inside_direction: "positive"
+  hysteresis_distance: 12.0
+
+# ── Visualization ────────────────────────────────────────────────────────────
+visualization:
+  # Counting line color in BGR format (Yellow).
+  line_color: [0, 255, 255]
+  line_thickness: 2
+
+  # Bounding box colors in BGR format.
+  bbox_color_confirmed: [0, 255, 0]    # Green for active tracks
+  bbox_color_lost: [128, 128, 128]     # Grey for lost tracks
+
+  # How many frames an ENTER (green) or EXIT (red) flash is shown.
+  event_flash_frames: 10
+
+  # Overlay text settings.
+  font_scale: 0.65
+  font_thickness: 2
+
+  # Top-left corner of the stats overlay box [x, y].
+  overlay_position: [20, 20]
+
+# ── Console Metrics ──────────────────────────────────────────────────────────
+metrics:
+  # Print metrics to stdout every N frames.
+  console_every_n_frames: 30
