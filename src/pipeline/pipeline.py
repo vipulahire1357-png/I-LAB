@@ -100,6 +100,27 @@ class Pipeline:
 
         max_frames = self._config.pipeline.max_frames
 
+        # Configure fit-to-screen resizable window for live preview if enabled
+        window_name = "CampusNetra Preview"
+        if self._config.pipeline.show_live_window:
+            cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+            preview_w, preview_h = 1280, 720
+            try:
+                import ctypes
+                user32 = ctypes.windll.user32
+                sw = user32.GetSystemMetrics(0)
+                sh = user32.GetSystemMetrics(1)
+                if sw > 0 and sh > 0:
+                    max_target_w = int(sw * 0.85)
+                    max_target_h = int(sh * 0.82)
+                    scale = min(max_target_w / max(1, frame_w), max_target_h / max(1, frame_h), 1.0)
+                    preview_w = int(frame_w * scale)
+                    preview_h = int(frame_h * scale)
+            except Exception:
+                preview_w, preview_h = 1280, 720
+
+            cv2.resizeWindow(window_name, preview_w, preview_h)
+
         try:
             while True:
                 if max_frames is not None and processed_count >= max_frames:
@@ -172,7 +193,7 @@ class Pipeline:
 
                 # Live preview window if enabled
                 if self._config.pipeline.show_live_window:
-                    cv2.imshow("CampusNetra Preview", annotated)
+                    cv2.imshow(window_name, annotated)
                     key = cv2.waitKey(1) & 0xFF
                     if key in (27, ord("q")):
                         print("\n[INFO] User interrupted live preview.")
