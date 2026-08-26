@@ -98,8 +98,14 @@ class Pipeline:
         print(f"Counting Line     : {self._config.counting.line_start} -> {self._config.counting.line_end} [inside={self._config.counting.inside_direction}]")
         print("-" * 80)
 
+        max_frames = self._config.pipeline.max_frames
+
         try:
             while True:
+                if max_frames is not None and processed_count >= max_frames:
+                    print(f"\n[INFO] Reached max_frames limit ({max_frames}). Stopping.")
+                    break
+
                 # 1. Read
                 t0 = time.monotonic()
                 frame = self._video_source.read()
@@ -119,13 +125,20 @@ class Pipeline:
                 track_result = self._tracker.update(det_result)
                 t_track = (time.monotonic() - t0) * 1000.0
 
-                # 4. Count (Line Crossing)
+                # 4. Count (Line Crossing & Zone Occupancy Events)
                 t0 = time.monotonic()
                 events = self._counter.update(track_result)
+                approx = self._counter.compute_occlusion_approximation(track_result)
+                left_area_cnt, right_area_cnt = self._counter.detect_area_occupants(track_result)
                 t_count = (time.monotonic() - t0) * 1000.0
 
-                # 5. Occupancy Update
-                occupancy_state = self._occupancy.apply(events)
+                # 5. Persistent Occupancy Update (Pure Counting Line Room Count + Decoupled Area States)
+                occupancy_state = self._occupancy.apply(
+                    events,
+                    approximation=approx,
+                    left_area_count=left_area_cnt,
+                    right_area_count=right_area_cnt,
+                )
 
                 # 6. Visualize
                 t0 = time.monotonic()
@@ -169,15 +182,19 @@ class Pipeline:
                 interval = self._config.metrics.console_every_n_frames
                 if processed_count % interval == 0 or processed_count == total_frames:
                     total_str = f"/{total_frames}" if total_frames > 0 else ""
+                    approx_str = f" (±{occupancy_state.occupancy_approximation})" if occupancy_state.occupancy_approximation > 0 else ""
                     print(
                         f"Frame: {processed_count:5d}{total_str} | "
                         f"FPS: {recent_fps:4.1f} | "
                         f"Active: {track_result.active_count:2d} | "
+                        f"Left Area: {occupancy_state.left_area_state.value} | "
+                        f"Right Area: {occupancy_state.right_area_state.value} | "
                         f"In: {occupancy_state.total_entries:2d} | "
                         f"Out: {occupancy_state.total_exits:2d} | "
-                        f"Occupancy: {occupancy_state.occupancy_count:2d} | "
+                        f"Occupancy: {occupancy_state.occupancy_count:2d}{approx_str} | "
                         f"State: {occupancy_state.classroom_state.value}"
                     )
+
 
         finally:
             self._video_source.close()

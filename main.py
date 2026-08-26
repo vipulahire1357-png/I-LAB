@@ -78,6 +78,13 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Inference device: 'cpu' or '0' for CUDA GPU",
     )
+    parser.add_argument(
+        "--max-frames",
+        "-n",
+        type=int,
+        default=None,
+        help="Maximum number of frames to process before exiting",
+    )
     return parser.parse_args()
 
 
@@ -92,11 +99,13 @@ def main() -> int:
         input_path = args.input or app_config.pipeline.input_path
         output_path = args.output or app_config.pipeline.output_path
         show_window = args.show or app_config.pipeline.show_live_window
+        max_frames = args.max_frames if args.max_frames is not None else app_config.pipeline.max_frames
 
         pipeline_cfg = PipelineConfig(
             input_path=input_path,
             output_path=output_path,
             show_live_window=show_window,
+            max_frames=max_frames,
         )
 
         detection_cfg = app_config.detection

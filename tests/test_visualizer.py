@@ -60,3 +60,43 @@ class TestVisualizer:
             events=[],
         )
         assert annotated.shape == (100, 100, 3)
+
+    def test_annotate_with_perpendicular_line_and_side_occupancy(self):
+        vis = Visualizer()
+        image = np.zeros((480, 640, 3), dtype=np.uint8)
+        frame = Frame(frame_id=1, timestamp=0.04, image=image)
+
+        tracks = (
+            Track(track_id=1, bbox=(50.0, 50.0, 150.0, 250.0), confidence=0.85, state=TrackState.CONFIRMED),
+        )
+        tracking_result = TrackingResult(frame_id=1, timestamp=0.04, tracks=tracks, active_count=1)
+        occupancy_state = OccupancyState(
+            occupancy_count=1,
+            total_entries=1,
+            total_exits=0,
+            classroom_state=ClassroomState.OCCUPIED,
+            left_occupancy=1,
+            right_occupancy=0,
+            left_state=ClassroomState.OCCUPIED,
+            right_state=ClassroomState.EMPTY,
+        )
+        counting_config = CountingConfig(
+            line_start=(0.0, 200.0),
+            line_end=(640.0, 200.0),
+            perpendicular_line_start=(320.0, 0.0),
+            perpendicular_line_end=(320.0, 480.0),
+        )
+
+        annotated = vis.annotate(
+            frame=frame,
+            tracking_result=tracking_result,
+            occupancy_state=occupancy_state,
+            events=[],
+            counting_config=counting_config,
+            fps=25.0,
+        )
+
+        assert isinstance(annotated, np.ndarray)
+        assert annotated.shape == (480, 640, 3)
+        assert np.any(annotated > 0)
+

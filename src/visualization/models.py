@@ -40,3 +40,7 @@ class VisualizationConfig:
     font_scale: float = 0.65
     font_thickness: int = 2
     overlay_position: Tuple[int, int] = (10, 10)
+    perpendicular_line_color: Tuple[int, int, int] = (255, 200, 0)
+    perpendicular_line_thickness: int = 2
+    show_side_occupancy: bool = True
+

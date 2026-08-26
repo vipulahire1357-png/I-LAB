@@ -51,7 +51,7 @@ tracking:
   # Consecutive detections required before a track is confirmed (2 frames for fast confirmation).
   min_hits: 2
 
-# ── Counting Line ────────────────────────────────────────────────────────────
+# ── Counting Line & Perpendicular Divider ────────────────────────────────────
 # The virtual line is defined by two pixel coordinates in the original
 # frame's resolution (1920x1080 for the classroom CCTV camera).
 #
@@ -61,17 +61,43 @@ tracking:
 #
 # inside_direction controls which half-plane is INSIDE ("positive" or "negative")
 # hysteresis_distance ensures complete crossing and eliminates boundary jitter
+#
+# perpendicular_line_start / perpendicular_line_end:
+#   Optional explicit endpoints for the perpendicular line.
+#   If left null, auto-computed perpendicular to the counting line at its midpoint.
+# perpendicular_line_length: length of auto-computed perpendicular line (pixels).
 counting:
-  line_start: [0, 195]
-  line_end: [1520, 1080]
+  line_start: [0, 80]
+  line_end: [1440, 1080]
   inside_direction: "positive"
   hysteresis_distance: 12.0
+  perpendicular_line_start: [1460, 0]
+  perpendicular_line_end: [130, 1080]
+  perpendicular_line_length: 1700.0
+  # Dual parallel divider lines forming the central walkway / aisle
+  # Left line rotated 8 deg to left (additional 2 deg left); Right line rotated 3 deg to left (upper start points fixed)
+  walkway_width: 160.0
+  divider_left_start: [1380, 0]
+  divider_left_end: [-412, 1080]
+  divider_right_start: [1540, 0]
+  divider_right_end: [58, 1080]
+
+
+
+
 
 # ── Visualization ────────────────────────────────────────────────────────────
 visualization:
   # Counting line color in BGR format (Yellow).
   line_color: [0, 255, 255]
   line_thickness: 2
+
+  # Perpendicular divider line color in BGR format (Cyan / Deep Sky Blue).
+  perpendicular_line_color: [255, 200, 0]
+  perpendicular_line_thickness: 2
+
+  # Whether to render on-canvas left/right side occupancy badges.
+  show_side_occupancy: true
 
   # Bounding box colors in BGR format.
   bbox_color_confirmed: [0, 255, 0]    # Green for active tracks

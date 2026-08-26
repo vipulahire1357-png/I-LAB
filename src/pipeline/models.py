@@ -27,6 +27,7 @@ class PipelineConfig:
     input_path: str = "data/input/classroom.mp4"
     output_path: str = "data/output/classroom_processed.mp4"
     show_live_window: bool = False
+    max_frames: Optional[int] = None
 
 
 @dataclass(frozen=True, slots=True)

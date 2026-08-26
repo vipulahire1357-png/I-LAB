@@ -138,24 +138,38 @@ tracking:
   max_age: 30                      # Max frames to retain a lost track before removal
   min_hits: 3                      # Consecutive hits required to confirm a track
 
-# ── Counting Line ────────────────────────────────────────────────────────────
+# ── Counting Line & Perpendicular Divider ────────────────────────────────────
 # Coordinates are [X, Y] in original video frame pixels.
-# The line divides the frame into OUTSIDE and INSIDE half-planes.
+# Primary counting line strictly manages total classroom entries, exits, and occupancy.
+# Perpendicular divider operates an independent state-machine exclusively for occupants
+# INSIDE the classroom to maintain exact Left/Right zone occupancy conservation.
 counting:
-  line_start: [0, 400]             # [x, y] start point of virtual counting line
-  line_end: [1024, 400]            # [x, y] end point of virtual counting line
+  line_start: [0, 0]               # [x, y] start point of virtual counting line (upper-left corner)
+  line_end: [1520, 1080]           # [x, y] end point of virtual counting line
   inside_direction: "positive"     # "positive" or "negative" (flips INSIDE/OUTSIDE side)
+  hysteresis_distance: 12.0        # Perpendicular deadband to prevent oscillation
+  perpendicular_line_start: [1460, 0]   # Top edge toward upper-right [x, y] (shifted 1cm left)
+  perpendicular_line_end: [130, 1080]   # Bottom edge of screen [x, y] (shifted 1cm left)
+  perpendicular_line_length: 1700.0     # Length of perpendicular divider (px)
+
+
+
+
+
 
 # ── Visualization ────────────────────────────────────────────────────────────
 visualization:
-  line_color: [0, 255, 255]        # BGR Yellow for counting line
+  line_color: [0, 255, 255]        # BGR Yellow for primary counting line
   line_thickness: 2
+  perpendicular_line_color: [255, 200, 0] # BGR Cyan/Sky Blue for perpendicular divider
+  perpendicular_line_thickness: 2
+  show_side_occupancy: true        # Show floating LEFT and RIGHT zone occupancy badges
   bbox_color_confirmed: [0, 255, 0] # BGR Green for active tracked students
   bbox_color_lost: [128, 128, 128]  # BGR Grey for lost tracks
   event_flash_frames: 10           # Duration (in frames) to flash ENTER (green) / EXIT (red)
   font_scale: 0.65
   font_thickness: 2
-  overlay_position: [10, 10]       # Top-left corner [X, Y] of the HUD stats box
+  overlay_position: [20, 20]       # Top-left corner [X, Y] of the HUD stats box
 
 # ── Console Metrics ──────────────────────────────────────────────────────────
 metrics:
@@ -198,9 +212,14 @@ data/output/classroom_processed.mp4
 ```
 Each frame contains:
 - Bounding boxes around detected/tracked persons with persistent Track IDs.
-- Configured virtual counting line.
-- Real-time HUD overlay:
-  - **OCCUPANCY:** Current estimated student count inside classroom
+- Primary virtual counting line (Yellow) and perpendicular dividing line (Cyan/Sky Blue).
+- On-canvas floating zone occupancy badges:
+  - **LEFT SIDE:** `LEFT: <count> (OCCUPIED / EMPTY)`
+  - **RIGHT SIDE:** `RIGHT: <count> (OCCUPIED / EMPTY)`
+- Real-time HUD overlay card:
+  - **OCCUPANCY:** Current estimated total student count inside classroom
+  - **LEFT SIDE:** Real-time occupant count & state on left side of divider
+  - **RIGHT SIDE:** Real-time occupant count & state on right side of divider
   - **ENTRIES:** Total cumulative entrance count
   - **EXITS:** Total cumulative exit count
   - **STATE:** `OCCUPIED` (if occupancy > 0) or `EMPTY` (if occupancy == 0)
@@ -214,16 +233,16 @@ CampusNetra product0.3 — Vision-Based Classroom Occupancy & Counting Pipeline
 ================================================================================
 Input Video       : data/input/classroom.mp4
 Output Video      : data/output/classroom_processed.mp4
-Resolution        : 1024x576 @ 25.00 FPS (750 total frames)
-Detector Model    : yolo11n.pt (device=cpu, conf=0.35)
-Tracker           : ByteTrack (max_age=30, min_hits=3)
-Counting Line     : (0, 400) -> (1024, 400) [inside=positive]
+Resolution        : 1920x1080 @ 25.00 FPS (750 total frames)
+Detector Model    : yolo11n.pt (device=cpu, conf=0.25)
+Tracker           : ByteTrack (max_age=45, min_hits=2)
+Counting Line     : (0, 195) -> (1520, 1080) [inside=positive]
 --------------------------------------------------------------------------------
-Frame:   30/750 | FPS: 11.2 | Active: 2 | In: 1 | Out: 0 | Occupancy: 1 | State: OCCUPIED
-Frame:   60/750 | FPS: 11.5 | Active: 3 | In: 3 | Out: 0 | Occupancy: 3 | State: OCCUPIED
-Frame:   90/750 | FPS: 11.4 | Active: 4 | In: 4 | Out: 0 | Occupancy: 4 | State: OCCUPIED
+Frame:   30/750 | FPS: 11.2 | Active: 2 | Left:  1 (OCCUPIED) | Right:  1 (OCCUPIED) | In: 2 | Out: 0 | Occupancy: 2 | State: OCCUPIED
+Frame:   60/750 | FPS: 11.5 | Active: 3 | Left:  2 (OCCUPIED) | Right:  1 (OCCUPIED) | In: 3 | Out: 0 | Occupancy: 3 | State: OCCUPIED
+Frame:   90/750 | FPS: 11.4 | Active: 4 | Left:  3 (OCCUPIED) | Right:  1 (OCCUPIED) | In: 4 | Out: 0 | Occupancy: 4 | State: OCCUPIED
 ...
-Frame:  750/750 | FPS: 11.8 | Active: 1 | In: 12 | Out: 3 | Occupancy: 9 | State: OCCUPIED
+Frame:  750/750 | FPS: 11.8 | Active: 1 | Left:  1 (OCCUPIED) | Right:  0 (EMPTY)    | In: 12 | Out: 3 | Occupancy: 9 | State: OCCUPIED
 --------------------------------------------------------------------------------
 Pipeline Completed Successfully!
 Total Frames Processed : 750
@@ -256,7 +275,9 @@ pytest tests/test_person_detector.py -v
 pytest tests/test_person_tracker.py -v
 pytest tests/test_entry_exit_counter.py -v
 pytest tests/test_occupancy_manager.py -v
+pytest tests/test_visualizer.py -v
 pytest tests/test_config_loader.py -v
+```
 ```
 
 ---

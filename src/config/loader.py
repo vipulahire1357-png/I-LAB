@@ -143,11 +143,65 @@ class ConfigLoader:
                     f"got {inside_direction!r}."
                 )
             hysteresis_dist = float(d.get("hysteresis_distance", 12.0))
+
+            perp_start = None
+            if "perpendicular_line_start" in d and d["perpendicular_line_start"] is not None:
+                p_raw = d["perpendicular_line_start"]
+                if len(p_raw) != 2:
+                    raise ValueError("perpendicular_line_start must be [x, y] with 2 values.")
+                perp_start = (float(p_raw[0]), float(p_raw[1]))
+
+            perp_end = None
+            if "perpendicular_line_end" in d and d["perpendicular_line_end"] is not None:
+                p_raw = d["perpendicular_line_end"]
+                if len(p_raw) != 2:
+                    raise ValueError("perpendicular_line_end must be [x, y] with 2 values.")
+                perp_end = (float(p_raw[0]), float(p_raw[1]))
+
+            perp_length = float(d.get("perpendicular_line_length", 1700.0))
+            walkway_width = float(d.get("walkway_width", 160.0))
+
+            div_left_start = None
+            if "divider_left_start" in d and d["divider_left_start"] is not None:
+                p_raw = d["divider_left_start"]
+                if len(p_raw) != 2:
+                    raise ValueError("divider_left_start must be [x, y] with 2 values.")
+                div_left_start = (float(p_raw[0]), float(p_raw[1]))
+
+            div_left_end = None
+            if "divider_left_end" in d and d["divider_left_end"] is not None:
+                p_raw = d["divider_left_end"]
+                if len(p_raw) != 2:
+                    raise ValueError("divider_left_end must be [x, y] with 2 values.")
+                div_left_end = (float(p_raw[0]), float(p_raw[1]))
+
+            div_right_start = None
+            if "divider_right_start" in d and d["divider_right_start"] is not None:
+                p_raw = d["divider_right_start"]
+                if len(p_raw) != 2:
+                    raise ValueError("divider_right_start must be [x, y] with 2 values.")
+                div_right_start = (float(p_raw[0]), float(p_raw[1]))
+
+            div_right_end = None
+            if "divider_right_end" in d and d["divider_right_end"] is not None:
+                p_raw = d["divider_right_end"]
+                if len(p_raw) != 2:
+                    raise ValueError("divider_right_end must be [x, y] with 2 values.")
+                div_right_end = (float(p_raw[0]), float(p_raw[1]))
+
             return CountingConfig(
                 line_start=line_start,
                 line_end=line_end,
                 inside_direction=inside_direction,
                 hysteresis_distance=hysteresis_dist,
+                perpendicular_line_start=perp_start,
+                perpendicular_line_end=perp_end,
+                perpendicular_line_length=perp_length,
+                walkway_width=walkway_width,
+                divider_left_start=div_left_start,
+                divider_left_end=div_left_end,
+                divider_right_start=div_right_start,
+                divider_right_end=div_right_end,
             )
         except Exception as exc:
             raise ConfigLoadError(f"Invalid [counting] section: {exc}") from exc
@@ -171,17 +225,23 @@ class ConfigLoader:
                 font_scale=float(d.get("font_scale", 0.65)),
                 font_thickness=int(d.get("font_thickness", 2)),
                 overlay_position=(int(op_raw[0]), int(op_raw[1])),
+                perpendicular_line_color=_bgr("perpendicular_line_color", [255, 200, 0]),
+                perpendicular_line_thickness=int(d.get("perpendicular_line_thickness", 2)),
+                show_side_occupancy=bool(d.get("show_side_occupancy", True)),
             )
         except Exception as exc:
             raise ConfigLoadError(f"Invalid [visualization] section: {exc}") from exc
 
+
     def _build_pipeline(self, raw: dict[str, Any]) -> PipelineConfig:
         d = raw.get("video", {})
         try:
+            mf = d.get("max_frames", None)
             return PipelineConfig(
                 input_path=str(d.get("input_path", "data/input/classroom.mp4")),
                 output_path=str(d.get("output_path", "data/output/classroom_processed.mp4")),
                 show_live_window=bool(d.get("show_live_window", False)),
+                max_frames=int(mf) if mf is not None else None,
             )
         except Exception as exc:
             raise ConfigLoadError(f"Invalid [video] section: {exc}") from exc

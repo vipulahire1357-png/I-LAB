@@ -43,7 +43,7 @@ The product0.3 MVP is a **strictly software-only** vision pipeline. It operates 
 
 ## 3. Objective
 
-The primary technical objective of the system is to answer six fundamental questions with high reliability from video footage:
+The primary technical objective of the system is to answer fundamental questions with high reliability from video footage:
 
 1. **How many students entered the classroom?** (`total_entries`)
 2. **How many students exited the classroom?** (`total_exits`)
@@ -51,6 +51,7 @@ The primary technical objective of the system is to answer six fundamental quest
 4. **When did an ENTER event occur?** (`timestamp`, `frame_id`, `track_id`)
 5. **When did an EXIT event occur?** (`timestamp`, `frame_id`, `track_id`)
 6. **Is the classroom currently considered OCCUPIED or EMPTY?** (`classroom_state: OCCUPIED | EMPTY`)
+7. **Is the LEFT side or RIGHT side of the entrance/room occupied, and what is its occupancy number?** (`left_occupancy`, `right_occupancy`, `left_state`, `right_state`)
 
 ---
 
@@ -83,21 +84,21 @@ The architecture is composed of strictly decoupled, single-responsibility module
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                     ENTRY/EXIT COUNTER (Module 4)                       │
 │                     EntryExitCounter (Geometry + FSM)                   │
-│         Evaluates foot-points against virtual line, prevents duplicates │
+│     Evaluates foot-points against counting line & perpendicular divider │
 └────────────────────────────────────┬────────────────────────────────────┘
-                                     │ list[CrossingEvent]
+                                     │ list[CrossingEvent] + (left_occ, right_occ)
                                      ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                       OCCUPANCY MANAGER (Module 5)                      │
 │                        OccupancyManager (State)                         │
-│           Maintains occupancy arithmetic (>= 0), sets OCCUPIED / EMPTY  │
+│       Maintains total, left, right occupancy; sets OCCUPIED / EMPTY     │
 └────────────────────────────────────┬────────────────────────────────────┘
                                      │ OccupancyState
                                      ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                          VISUALIZER (Module 6)                          │
 │                         Visualizer (OpenCV HUD)                         │
-│             Renders boxes, track IDs, counting line, HUD overlay        │
+│        Renders boxes, counting line, perpendicular divider, HUD overlay │
 └────────────────────────────────────┬────────────────────────────────────┘
                                      │ Annotated np.ndarray frame
                                      ▼
@@ -121,11 +122,12 @@ The architecture is composed of strictly decoupled, single-responsibility module
 | **Module 1: Video Source** | `src.video` <br>`FileVideoSource` | Video file path (`str` / `Path`) | `Frame(frame_id, timestamp, image)` | Safe frame-by-frame decoding, metadata extraction, error isolation. |
 | **Module 2: Person Detector** | `src.detection` <br>`PersonDetector` | `Frame` | `DetectionResult(detections, inference_ms)` | Person class filtering (class 0), confidence thresholding, boundary clamping. |
 | **Module 3: Person Tracker** | `src.tracking` <br>`PersonTracker` | `DetectionResult` | `TrackingResult(tracks, tracking_ms)` | Temporal association via Kalman filter & ByteTrack; assigns persistent `track_id`. |
-| **Module 4: Entry/Exit Counter** | `src.counting` <br>`EntryExitCounter` | `TrackingResult` | `list[CrossingEvent]` | Vector geometry line testing, per-track FSM crossing locking, duplicate suppression. |
-| **Module 5: Occupancy Manager** | `src.occupancy` <br>`OccupancyManager` | `list[CrossingEvent]` | `OccupancyState(occupancy, entries, exits, state)` | Cumulative event aggregation, non-negative clamping, state evaluation. |
-| **Module 6: Visualizer** | `src.visualization` <br>`Visualizer` | `Frame`, `TrackingResult`, `OccupancyState`, `list[CrossingEvent]` | Annotated `np.ndarray` image | Rendering bounding boxes, IDs, virtual line, event flash alerts, statistics HUD. |
+| **Module 4: Entry/Exit Counter** | `src.counting` <br>`EntryExitCounter` | `TrackingResult` | `list[CrossingEvent]` | Vector geometry line testing, per-track FSM crossing locking, occlusion trajectory interpolation, complete perpendicular divider crossing detection. |
+| **Module 5: Occupancy Manager** | `src.occupancy` <br>`OccupancyManager` | `list[CrossingEvent]` | `OccupancyState(occupancy, entries, exits, state, left, right)` | Event-driven cumulative aggregation, conservation invariant enforcement (`left + right == total`), persistent occupancy maintenance even when tracks leave frame. |
+| **Module 6: Visualizer** | `src.visualization` <br>`Visualizer` | `Frame`, `TrackingResult`, `OccupancyState`, `list[CrossingEvent]` | Annotated `np.ndarray` image | Rendering bounding boxes, IDs, virtual line, perpendicular divider, side badges, HUD. |
 | **Module 7: Pipeline** | `src.pipeline` <br>`Pipeline` | `AppConfig` | Output Video & `PipelineMetrics` | Orchestrates execution, manages file writing, tracks latency profiles, outputs telemetry. |
 | **Config System** | `src.config` <br>`ConfigLoader` | YAML file path | `AppConfig` (Typed Dataclasses) | Loads and validates configuration into strongly-typed dataclasses. |
+
 
 ---
 
@@ -234,6 +236,25 @@ $$\text{occupancy}(t) = \max\left(0, \, \text{occupancy}(t-1) + \Delta \text{ent
 
 $$\text{classroom\_state}(t) = \begin{cases} \text{OCCUPIED}, & \text{if } \text{occupancy}(t) > 0 \\ \text{EMPTY}, & \text{if } \text{occupancy}(t) == 0 \end{cases}$$
 
+### 7.5 Separated Counting Line & Perpendicular Divider State Machines
+
+The counting line and perpendicular divider operate dedicated, coupled finite-state machines (FSMs) with hysteresis filtering and dual-dot body validation:
+
+1. **Counting Line FSM (Pure Total Classroom Occupancy):**
+   - Strictly determines classroom total occupancy: $\text{occupancy}(t) = \max(0, \text{entries} - \text{exits})$.
+   - Transitions between `OUTSIDE` and `INSIDE` based on foot-point ground contact verified by head-point orientation.
+   - **Occlusion Approximation ($\pm 0, \pm 1, \pm 2$):** Quantifies track overlap/clustering near the counting line as a separate uncertainty approximation.
+
+2. **Decoupled Area vs. Divider Detection:**
+   - **Divider Detection (FSM Line Crossings):**
+     - Detects directional boundary crossings across Left Divider (`[1380, 0] -> [-412, 1080]`) and Right Divider (`[1540, 0] -> [58, 1080]`).
+     - Emits `ZONE_ENTER_LEFT`, `ZONE_EXIT_LEFT`, `ZONE_ENTER_RIGHT`, `ZONE_EXIT_RIGHT`.
+   - **Area Detection (Spatial Presence):**
+     - Evaluates all confirmed tracks in the classroom (both static seated and moving students).
+     - Directly captures occupants located in Left Seating Area (`left_area_state: OCCUPIED/EMPTY`) and Right Seating Area (`right_area_state: OCCUPIED/EMPTY`) even if missed by divider lines.
+   - **Display Invariant:** Left and right occupant counts are removed from the main HUD; only room `OCCUPANCY` (with separate `APPROX ±X`) and area operational states (`LEFT AREA`, `RIGHT AREA`) are displayed.
+
+
 ---
 
 ## 8. Configuration Reference
@@ -248,7 +269,7 @@ video:
 
 detection:
   model_path: "yolo11n.pt"                    # Model weights filename
-  confidence_threshold: 0.35                  # Min confidence score [0.0 - 1.0]
+  confidence_threshold: 0.25                  # Min confidence score [0.0 - 1.0]
   iou_threshold: 0.45                         # NMS IoU threshold [0.0 - 1.0]
   input_size: 640                             # Model input size (pixels)
   device: "cpu"                               # Inference device ("cpu" or "0")
@@ -256,26 +277,38 @@ detection:
 
 tracking:
   tracker_type: "bytetrack"                   # Tracker algorithm
-  track_high_threshold: 0.25                  # Primary detection match threshold
-  track_low_threshold: 0.10                   # Secondary detection match threshold
-  match_threshold: 0.80                       # Tracking IoU match threshold
-  max_age: 30                                 # Frames to hold lost track
-  min_hits: 3                                 # Frames required to confirm track
+  track_high_threshold: 0.20                  # Primary detection match threshold
+  track_low_threshold: 0.05                   # Secondary detection match threshold
+  match_threshold: 0.70                       # Tracking IoU match threshold
+  max_age: 45                                 # Frames to hold lost track
+  min_hits: 2                                 # Frames required to confirm track
 
 counting:
-  line_start: [0, 400]                        # Virtual line start [X, Y]
-  line_end: [1024, 400]                       # Virtual line end [X, Y]
+  line_start: [0, 80]                         # Virtual line start [X, Y] (shifted 2cm to lower left)
+  line_end: [1440, 1080]                      # Virtual line end [X, Y]
   inside_direction: "positive"                # "positive" or "negative"
+  hysteresis_distance: 12.0                   # Perpendicular crossing deadband (pixels)
+  perpendicular_line_start: [1460, 0]         # Center divider reference start [X, Y]
+  perpendicular_line_end: [130, 1080]         # Center divider reference end [X, Y]
+  perpendicular_line_length: 1700.0           # Length of perpendicular divider (pixels)
+  walkway_width: 160.0                        # Central walkway corridor width (pixels, 4cm)
+  divider_left_start: [1380, 0]               # Left Walkway Divider start [X, Y] (fixed upper end)
+  divider_left_end: [-412, 1080]              # Left Walkway Divider end [X, Y] (rotated 8 deg left)
+  divider_right_start: [1540, 0]              # Right Walkway Divider start [X, Y] (fixed upper end)
+  divider_right_end: [58, 1080]               # Right Walkway Divider end [X, Y] (rotated 3 deg left)
 
 visualization:
-  line_color: [0, 255, 255]                   # Line color BGR (Yellow)
-  line_thickness: 2                           # Line thickness in pixels
+  line_color: [0, 255, 255]                   # Counting line color BGR (Yellow)
+  line_thickness: 2                           # Counting line thickness in pixels
+  perpendicular_line_color: [255, 200, 0]     # Perpendicular line color BGR (Cyan / Sky Blue)
+  perpendicular_line_thickness: 2             # Perpendicular line thickness in pixels
+  show_side_occupancy: true                   # Render on-canvas LEFT / RIGHT zone badges
   bbox_color_confirmed: [0, 255, 0]           # Active box color BGR (Green)
   bbox_color_lost: [128, 128, 128]            # Lost box color BGR (Grey)
   event_flash_frames: 10                      # Alert flash duration in frames
   font_scale: 0.65                            # HUD font scale
   font_thickness: 2                           # HUD font thickness
-  overlay_position: [10, 10]                  # HUD top-left coordinate [X, Y]
+  overlay_position: [20, 20]                  # HUD top-left coordinate [X, Y]
 
 metrics:
   console_every_n_frames: 30                  # Telemetry reporting interval
@@ -287,17 +320,17 @@ metrics:
 
 The test suite contains automated unit and integration tests using `pytest`.
 
-### 9.1 Test Suite Breakdown (125 Tests Total — All Passing)
+### 9.1 Test Suite Breakdown (144 Tests Total — All Passing)
 | Test File | Test Count | Target Module | Scope |
 | :--- | :--- | :--- | :--- |
 | `tests/test_video_source.py` | 26 tests | Module 1: Video Source | File validation, frame reading, metadata, error handling. |
 | `tests/test_person_detector.py` | 30 tests | Module 2: Person Detector | Model loading, person class filtering, confidence NMS, bounding box clamping. |
 | `tests/test_classroom.py` | 24 tests | Module 2 & 3: Profiles | Classroom far-ROI detection fusion, IoU math, specialized tracker configurations. |
 | `tests/test_person_tracker.py` | 27 tests | Module 3: Person Tracker | Track association, ID persistence, lost track recovery, state pruning. |
-| `tests/test_entry_exit_counter.py` | 5 tests | Module 4: Counter | Line geometry, OUTSIDE $\rightarrow$ INSIDE detection, duplicate locking, memory cleanup. |
-| `tests/test_occupancy_manager.py` | 6 tests | Module 5: Occupancy | Entry increment, exit decrement, non-negative clamping, state switching. |
-| `tests/test_visualizer.py` | 2 tests | Module 6: Visualizer | Annotation correctness, ndarray shape preservation, empty frame safety. |
-| `tests/test_config_loader.py` | 4 tests | Config System | YAML deserialization, type coercion, missing parameter error catching. |
+| `tests/test_entry_exit_counter.py` | 15 tests | Module 4: Counter | Line geometry, dual parallel divider lines, occlusion approximation, static/moving area presence, zone transitions. |
+| `tests/test_occupancy_manager.py` | 14 tests | Module 5: Occupancy | Pure counting line occupancy, occlusion approximation separation, decoupled area vs divider detection. |
+| `tests/test_visualizer.py` | 3 tests | Module 6: Visualizer | Annotation correctness, approximation rendering, area badges, empty frame safety. |
+| `tests/test_config_loader.py` | 4 tests | Config System | YAML deserialization, walkway divider parsing, missing parameter catching. |
 | `tests/test_pipeline_integration.py`| 1 test | Module 7: Pipeline | End-to-end processing of synthetic video streams, video file creation. |
 
 ---
@@ -332,11 +365,11 @@ The test suite contains automated unit and integration tests using `pytest`.
 
 | Scenario / Edge Case | System Impact | Mitigation / System Behavior |
 | :--- | :--- | :--- |
-| **Severe Occlusion behind furniture** | Detection box disappears temporarily while student is walking. | ByteTrack maintains track state for `max_age=30` frames; Kalman filter predicts trajectory until re-acquisition. |
+| **Severe Occlusion behind furniture** | Detection box disappears temporarily while student is walking. | ByteTrack maintains track state for `max_age=45` frames; Kalman filter predicts trajectory until re-acquisition. |
 | **Close Group Entry (2+ students touching)** | YOLO detector may group two overlapping students into a single bounding box. | Count will register as 1. Acknowledged MVP limitation (no multi-camera or semantic segmentation). |
 | **Student Loitering on Counting Line** | Foot-point fluctuates around the zero boundary. | Finite state machine locks track state upon first transition; no redundant events are triggered. |
 | **Student Enters, Leaves, and Re-Enters** | Student exits camera view and returns later. | ByteTrack drops old track after `max_age` frames and assigns a new `track_id` on return, correctly registering a new entry. |
-| **False Positives (Bags, Chairs)** | Static objects briefly misdetected as a person. | Tracker requires `min_hits=3` consecutive frames before confirming a track; isolated false positives are discarded. |
+| **False Positives (Bags, Chairs)** | Static objects briefly misdetected as a person. | Tracker requires `min_hits=2` consecutive frames before confirming a track; isolated false positives are discarded. |
 | **Elevated Perspective Foreshortening** | Students far from the camera appear significantly smaller. | Optional `scene_profile: "classroom"` executes a two-pass far-ROI detection for high-recall in the upper frame area. |
 
 ---
@@ -375,9 +408,9 @@ The following features are **strictly out of scope** for product0.3 MVP:
 | **Video Source** | `src/video/file_video_source.py` | `IMPLEMENTED` | `TESTED` | Fully verified with 26 unit tests. |
 | **Person Detector** | `src/detection/person_detector.py` | `IMPLEMENTED` | `TESTED` | Fully verified with 54 unit & profile tests. |
 | **Person Tracker** | `src/tracking/person_tracker.py` | `IMPLEMENTED` | `TESTED` | Fully verified with 27 unit tests. |
-| **Entry/Exit Counter** | `src/counting/entry_exit_counter.py` | `IMPLEMENTED` | `TESTED` | Fully verified with 5 unit tests. |
-| **Occupancy Manager**| `src/occupancy/occupancy_manager.py` | `IMPLEMENTED` | `TESTED` | Fully verified with 6 unit tests. |
-| **Visualizer** | `src/visualization/visualizer.py` | `IMPLEMENTED` | `TESTED` | Fully verified with 2 unit tests. |
+| **Entry/Exit Counter** | `src/counting/entry_exit_counter.py` | `IMPLEMENTED` | `TESTED` | Fully verified with 8 unit tests (including dual-dot validation). |
+| **Occupancy Manager**| `src/occupancy/occupancy_manager.py` | `IMPLEMENTED` | `TESTED` | Fully verified with 7 unit tests (including left/right state). |
+| **Visualizer** | `src/visualization/visualizer.py` | `IMPLEMENTED` | `TESTED` | Fully verified with 3 unit tests (including dual-dot rendering). |
 | **Pipeline** | `src/pipeline/pipeline.py` | `IMPLEMENTED` | `TESTED` | Fully verified with end-to-end integration test. |
 | **CLI Runner** | `main.py` | `IMPLEMENTED` | `TESTED` | CLI arguments verified via `--help`. |
 | **ESP32 Controller**| `src/hardware/...` | `NOT IMPLEMENTED` | `N/A` | Strict non-goal for MVP. |
@@ -396,3 +429,9 @@ The following features are **strictly out of scope** for product0.3 MVP:
 | **2026-08-25** | Phase 8 Pipeline & Entry Point | Lead CV Systems Engineer | `COMPLETED` | Implemented `Pipeline`, `main.py`, and integration test. |
 | **2026-08-25** | Automated Test Verification | Lead CV Systems Engineer | `VERIFIED` | 125/125 tests passing in `pytest`. |
 | **2026-08-25** | Documentation & Audit Finalization | Lead CV Systems Engineer | `COMPLETED` | Finalized `SetupAndRun.md` and `ReadMeAndAudit.md`. |
+| **2026-08-26** | Perpendicular Divider & Side Occupancy | Lead CV Systems Engineer | `COMPLETED` | Added perpendicular divider line, left/right occupancy tracking, and badges (129/129 tests passing). |
+| **2026-08-26** | Dual-Dot (Foot + Head) Validation System | Lead CV Systems Engineer | `COMPLETED` | Added dual reference dots, head-point orientation validation, 1cm divider shift (130/130 tests passing). |
+| **2026-08-26** | Separated Counting & Zone State Machines | Lead CV Systems Engineer | `COMPLETED` | Separated counting line occupancy from perpendicular divider; inside-only zone occupancy with exact conservation. |
+
+
+
