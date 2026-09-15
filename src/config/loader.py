@@ -240,6 +240,7 @@ class ConfigLoader:
             return PipelineConfig(
                 input_path=str(d.get("input_path", "data/input/classroom.mp4")),
                 output_path=str(d.get("output_path", "data/output/classroom_processed.mp4")),
+                record_output=bool(d.get("record_output", False)),
                 show_live_window=bool(d.get("show_live_window", False)),
                 max_frames=int(mf) if mf is not None else None,
             )

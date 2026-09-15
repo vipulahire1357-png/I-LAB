@@ -1,4 +1,4 @@
-﻿"""
+"""
 Data models for the Video Source module.
 
 These are plain data containers — no business logic, no OpenCV dependency.
@@ -34,6 +34,8 @@ class Frame:
     frame_id: int
     timestamp: float
     image: np.ndarray
+    source_type: str = "video"
+    camera_id: Optional[str] = None
 
     # numpy arrays are not hashable; disable __hash__ inherited from frozen
     __hash__ = None  # type: ignore[assignment]

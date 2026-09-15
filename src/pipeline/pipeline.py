@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import cv2
+import numpy as np
 
 if TYPE_CHECKING:
     from src.config.models import AppConfig
@@ -24,6 +25,7 @@ from src.detection.person_detector import PersonDetector
 from src.occupancy.occupancy_manager import OccupancyManager
 from src.pipeline.models import PipelineMetrics
 from src.tracking.person_tracker import PersonTracker
+from src.video.video_source import VideoSource
 from src.video.file_video_source import FileVideoSource
 from src.visualization.visualizer import Visualizer
 
@@ -37,13 +39,15 @@ class Pipeline:
     ----------
     config : AppConfig
         Complete application configuration.
+    video_source : VideoSource, optional
+        Injected video source. If None, falls back to FileVideoSource using config.
     """
 
-    def __init__(self, config: AppConfig) -> None:
+    def __init__(self, config: AppConfig, video_source: Optional[VideoSource] = None) -> None:
         self._config = config
 
         # Instantiate modules
-        self._video_source = FileVideoSource(config.pipeline.input_path)
+        self._video_source = video_source if video_source else FileVideoSource(config.pipeline.input_path)
         self._detector = PersonDetector(config.detection)
         self._tracker = PersonTracker(config.tracking)
         self._counter = EntryExitCounter(config.counting)
@@ -52,7 +56,7 @@ class Pipeline:
 
 
         #it calls the controller! need to change ip here also
-        self.classroom_controller = ClassroomController("192.168.1.8")
+        self.classroom_controller = ClassroomController("192.168.43.75")
 
     def run(self) -> PipelineMetrics:
         """Execute the pipeline on the input video until completion or interruption.
@@ -71,13 +75,17 @@ class Pipeline:
         fps = metadata.fps or 25.0
         total_frames = metadata.frame_count or 0
 
-        # Ensure output directory exists
+        record_output = self._config.pipeline.record_output
         out_path = Path(self._config.pipeline.output_path)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Initialize VideoWriter
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        writer = cv2.VideoWriter(str(out_path), fourcc, fps, (frame_w, frame_h))
+        writer: Optional[cv2.VideoWriter] = None
+        writer_codec = "mp4v"
+        if record_output:
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            if not os.access(out_path.parent, os.W_OK):
+                raise OSError(f"Output directory is not writable: {out_path.parent}")
+            print(f"Output recording  : enabled ({out_path}, codec={writer_codec})")
+        else:
+            print("Output recording  : disabled")
 
         # Timing accumulators
         t_read_list: list[float] = []
@@ -96,7 +104,12 @@ class Pipeline:
         print("=" * 80)
         print(f"Input Video       : {self._config.pipeline.input_path}")
         print(f"Output Video      : {self._config.pipeline.output_path}")
-        print(f"Resolution        : {frame_w}x{frame_h} @ {fps:.2f} FPS ({total_frames} total frames)")
+        source_resolution = (
+            f"{frame_w}x{frame_h}"
+            if metadata.width and metadata.height
+            else "unknown until first frame"
+        )
+        print(f"Resolution        : {source_resolution} @ {fps:.2f} FPS ({total_frames} total frames)")
         print(f"Detector Model    : {self._config.detection.model_path} (device={self._config.detection.device})")
         print(f"Tracker           : ByteTrack (max_age={self._config.tracking.max_age}, min_hits={self._config.tracking.min_hits})")
         print(f"Counting Line     : {self._config.counting.line_start} -> {self._config.counting.line_end} [inside={self._config.counting.inside_direction}]")
@@ -136,6 +149,35 @@ class Pipeline:
                 frame = self._video_source.read()
                 if frame is None:
                     break
+                image = frame.image
+                if image is None or not isinstance(image, np.ndarray):
+                    raise ValueError("Video source returned a frame without a NumPy image")
+                if image.dtype != np.uint8 or image.ndim != 3 or image.shape[2] != 3:
+                    raise ValueError(
+                        f"Unsupported frame for pipeline: shape={image.shape}, dtype={image.dtype}; "
+                        "expected HxWx3 uint8"
+                    )
+                actual_h, actual_w = image.shape[:2]
+                if record_output and writer is None:
+                    frame_w, frame_h = actual_w, actual_h
+                    fourcc = cv2.VideoWriter_fourcc(*writer_codec)
+                    writer = cv2.VideoWriter(str(out_path), fourcc, fps, (frame_w, frame_h))
+                    print(
+                        f"Writer path       : {out_path}\n"
+                        f"Writer codec      : {writer_codec}\n"
+                        f"Writer FPS        : {fps:.2f}\n"
+                        f"Writer resolution : {frame_w}x{frame_h}\n"
+                        f"Frame shape       : {image.shape}\n"
+                        f"Frame dtype       : {image.dtype}\n"
+                        f"Writer isOpened   : {writer.isOpened()}"
+                    )
+                    if not writer.isOpened():
+                        writer.release()
+                        writer = None
+                        raise RuntimeError(
+                            f"VideoWriter could not open output path {out_path} with "
+                            f"{writer_codec} + {out_path.suffix}"
+                        )
                 t_read = (time.monotonic() - t0) * 1000.0
 
                 frame_start_t = time.monotonic()
@@ -191,7 +233,24 @@ class Pipeline:
 
                 # 7. Write Frame
                 t0 = time.monotonic()
-                writer.write(annotated)
+                if record_output:
+                    if (
+                        annotated is None
+                        or annotated.dtype != np.uint8
+                        or annotated.ndim != 3
+                        or annotated.shape[2] != 3
+                    ):
+                        raise ValueError(
+                            f"Unsupported frame for VideoWriter: shape={getattr(annotated, 'shape', None)}, "
+                            f"dtype={getattr(annotated, 'dtype', None)}; expected HxWx3 uint8"
+                        )
+                    if annotated.shape[:2] != (frame_h, frame_w):
+                        raise ValueError(
+                            f"VideoWriter frame size mismatch: writer={frame_w}x{frame_h}, "
+                            f"frame={annotated.shape[1]}x{annotated.shape[0]}"
+                        )
+                    assert writer is not None
+                    writer.write(annotated)
                 t_write = (time.monotonic() - t0) * 1000.0
 
                 # Accumulate timings
@@ -235,7 +294,8 @@ class Pipeline:
 
         finally:
             self._video_source.close()
-            writer.release()
+            if writer is not None:
+                writer.release()
             if self._config.pipeline.show_live_window:
                 cv2.destroyAllWindows()
 
@@ -274,7 +334,10 @@ class Pipeline:
         print(f"Total Exited           : {metrics.total_exits}")
         print(f"Final Occupancy        : {metrics.final_occupancy}")
         print(f"Final Classroom State  : {metrics.final_state.value}")
-        print(f"Saved Processed Video  : {self._config.pipeline.output_path}")
+        if record_output:
+            print(f"Saved Processed Video  : {self._config.pipeline.output_path}")
+        else:
+            print("Saved Processed Video  : disabled")
         print("=" * 80)
 
         return metrics

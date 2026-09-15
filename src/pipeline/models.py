@@ -20,12 +20,15 @@ class PipelineConfig:
         Path to the input CCTV video file.
     output_path : str
         Path to write the processed output video.
+    record_output : bool
+        If True, encode annotated frames to ``output_path``.
     show_live_window : bool
         If True, displays an OpenCV preview window during processing.
     """
 
     input_path: str = "data/input/classroom.mp4"
     output_path: str = "data/output/classroom_processed.mp4"
+    record_output: bool = False
     show_live_window: bool = False
     max_frames: Optional[int] = None
 

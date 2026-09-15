@@ -118,6 +118,7 @@ All runtime behaviors are governed by `config/config.yaml`. **No Python code mod
 video:
   input_path: "data/input/classroom.mp4"
   output_path: "data/output/classroom_processed.mp4"
+  record_output: false              # Set true to encode annotated frames to output_path
   show_live_window: false          # Set to true for live OpenCV preview window
 
 # ── Person Detection ─────────────────────────────────────────────────────────

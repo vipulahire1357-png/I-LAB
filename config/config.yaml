@@ -6,6 +6,8 @@
 video:
   input_path: "data/input/10.15.1.188_ch14_20260825124220_20260825131415.mp4"
   output_path: "data/output/classroom_processed.mp4"
+  # Output encoding is optional and disabled for the production RTSP path.
+  record_output: false
   # Set to true to show a live OpenCV preview window while processing.
   # Keep false for headless / batch processing.
   show_live_window: false

@@ -59,7 +59,7 @@ class ESP32Controller:
 # Temporary test
 if __name__ == "__main__":
 
-    esp32 = ESP32Controller("192.168.1.8")
+    esp32 = ESP32Controller("192.168.43.75")
 
     esp32.set_state(
         lights=1,

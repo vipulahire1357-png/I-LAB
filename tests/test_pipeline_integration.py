@@ -52,6 +52,7 @@ class TestPipelineIntegration:
             pipeline=PipelineConfig(
                 input_path=str(synthetic_video),
                 output_path=str(out_video),
+                record_output=True,
                 show_live_window=False,
             ),
             metrics=MetricsConfig(console_every_n_frames=10),

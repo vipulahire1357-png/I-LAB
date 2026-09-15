@@ -1,0 +1,31 @@
+# Example Camera Configuration
+# Copy this file to cameras.yaml and replace placeholders with actual credentials.
+
+frame_extraction:
+  fps: 2
+  resize:
+    enabled: false
+    width: 1280
+    height: 720
+
+frame_output:
+  save_to_disk: false
+  directory: "output/frames"
+
+connection:
+  retry_enabled: true
+  initial_retry_delay: 2
+  max_retry_delay: 30
+
+cameras:
+  "A14-419":
+    name: "Machine Learning Lab"
+    username: "PASTE_USERNAME_HERE"
+    password: "PASTE_PASSWORD_HERE"
+    rtsp_url: "rtsp://CAMERA_IP:PORT/PATH"
+
+  "A14-420":
+    name: "Computer Lab"
+    username: "PASTE_USERNAME_HERE"
+    password: "PASTE_PASSWORD_HERE"
+    rtsp_url: "rtsp://CAMERA_IP:PORT/PATH"
