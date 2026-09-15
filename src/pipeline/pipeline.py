@@ -5,8 +5,8 @@ Coordinates the sequential processing of video frames through VideoSource,
 PersonDetector, PersonTracker, EntryExitCounter, OccupancyManager, and Visualizer,
 while managing video encoding and metrics collection.
 """
-
 from __future__ import annotations
+from src.hardware.classroom_controller import ClassroomController
 
 import logging
 import os
@@ -49,6 +49,10 @@ class Pipeline:
         self._counter = EntryExitCounter(config.counting)
         self._occupancy = OccupancyManager()
         self._visualizer = Visualizer(config.visualization)
+
+
+        #it calls the controller! need to change ip here also
+        self.classroom_controller = ClassroomController("192.168.1.8")
 
     def run(self) -> PipelineMetrics:
         """Execute the pipeline on the input video until completion or interruption.
@@ -160,6 +164,18 @@ class Pipeline:
                     left_area_count=left_area_cnt,
                     right_area_count=right_area_cnt,
                 )
+                self.classroom_controller.update(
+                total_occupancy=occupancy_state.occupancy_count,
+                left_occupied=(
+                    occupancy_state.occupancy_count > 0
+                    and occupancy_state.left_area_state.value == "OCCUPIED"
+                ),
+                right_occupied=(
+                    occupancy_state.occupancy_count > 0
+                    and occupancy_state.right_area_state.value == "OCCUPIED"
+                ),
+            )
+                
 
                 # 6. Visualize
                 t0 = time.monotonic()

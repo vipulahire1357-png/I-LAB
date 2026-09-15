@@ -71,14 +71,14 @@ counting:
   line_end: [1440, 1080]
   inside_direction: "positive"
   hysteresis_distance: 12.0
-  perpendicular_line_start: [1460, 0]
-  perpendicular_line_end: [130, 1080]
+  perpendicular_line_start: [1360, 0]
+  perpendicular_line_end: [13, 1080]
   perpendicular_line_length: 1700.0
   # Dual parallel divider lines forming the central walkway / aisle
   # Left line rotated 8 deg to left (additional 2 deg left); Right line rotated 3 deg to left (upper start points fixed)
   walkway_width: 160.0
   divider_left_start: [1380, 0]
-  divider_left_end: [-412, 1080]
+  divider_left_end: [-1112, 1080]
   divider_right_start: [1540, 0]
   divider_right_end: [58, 1080]
 
