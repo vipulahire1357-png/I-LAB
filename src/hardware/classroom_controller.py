@@ -1,6 +1,7 @@
 import time
 
 from src.hardware.esp32_controller import ESP32Controller
+from src.app_state import app_state
 
 
 class ClassroomController:
@@ -9,8 +10,8 @@ class ClassroomController:
     # Final mein: 5 * 60
     EMPTY_TIMEOUT = 10
 
-    def __init__(self, esp32_ip):
-        self.esp32 = ESP32Controller(esp32_ip)
+    def __init__(self):
+        self.esp32 = ESP32Controller()
 
         # Current hardware states
         self.lights_state = False
@@ -23,6 +24,8 @@ class ClassroomController:
         self.right_empty_since = None
 
     def update(self, total_occupancy, left_occupied, right_occupied):
+        if app_state.mode != "AUTO":
+            return
 
         current_time = time.time()
 
@@ -92,3 +95,6 @@ class ClassroomController:
             left_fans=self.left_fans_state,
             right_fans=self.right_fans_state
         )
+        app_state.lights = self.lights_state
+        app_state.left_fans = self.left_fans_state
+        app_state.right_fans = self.right_fans_state

@@ -99,6 +99,7 @@ class OccupancyManager:
         right_area_count: int = 0,
         left_occupancy: Optional[int] = None,
         right_occupancy: Optional[int] = None,
+        tracked_boxes: Optional[List[tuple]] = None,
     ) -> OccupancyState:
         """Apply a batch of line crossing events and update zone occupancy for the current frame.
 
@@ -209,7 +210,8 @@ class OccupancyManager:
                     self._left_occupancy,
                     self._right_occupancy,
                 )
-
+        if tracked_boxes is not None:
+            self._occupancy_count = len(tracked_boxes)
         self._occupancy_approximation = max(0, min(2, int(approximation)))
         self._left_area_count = max(0, int(left_area_count))
         self._right_area_count = max(0, int(right_area_count))

@@ -7,6 +7,7 @@ while managing video encoding and metrics collection.
 """
 from __future__ import annotations
 from src.hardware.classroom_controller import ClassroomController
+from src.app_state import app_state
 
 import logging
 import os
@@ -28,6 +29,7 @@ from src.tracking.person_tracker import PersonTracker
 from src.video.video_source import VideoSource
 from src.video.file_video_source import FileVideoSource
 from src.visualization.visualizer import Visualizer
+from src.hardware.esp32_discovery import discover_esp32
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +57,9 @@ class Pipeline:
         self._visualizer = Visualizer(config.visualization)
 
 
-        #it calls the controller! need to change ip here also
-        self.classroom_controller = ClassroomController("192.168.43.75")
+        
+        # ESP32 controller handles IP discovery automatically
+        self.classroom_controller = ClassroomController()
 
     def run(self) -> PipelineMetrics:
         """Execute the pipeline on the input video until completion or interruption.
@@ -198,6 +201,49 @@ class Pipeline:
                 approx = self._counter.compute_occlusion_approximation(track_result)
                 left_area_cnt, right_area_cnt = self._counter.detect_area_occupants(track_result)
                 t_count = (time.monotonic() - t0) * 1000.0
+                # Calculate occupancy from tracked person boxes inside the yellow line
+                inside_boxes = []
+
+                line_start = self._config.counting.line_start
+                line_end = self._config.counting.line_end
+                inside_direction = self._config.counting.inside_direction
+
+                x1_line, y1_line = line_start
+                x2_line, y2_line = line_end
+
+                for track in track_result.tracks:
+                    x1, y1, x2, y2 = track.bbox
+
+                    foot_x = (x1 + x2) / 2
+                    foot_y = y2
+
+                    cross_product = (
+                        (x2_line - x1_line) * (foot_y - y1_line)
+                        - (y2_line - y1_line) * (foot_x - x1_line)
+                    )
+                    # print(
+                    #         f"FOOT=({foot_x:.0f},{foot_y:.0f}) "
+                    #         f"CROSS={cross_product:.0f}"
+                    #     )
+
+                    # if inside_direction == "positive":
+                    #     is_inside = cross_product > 0
+                    # else:
+                    #     is_inside = cross_product < 0
+                    is_inside = cross_product < 0
+
+                    if is_inside:
+                        inside_boxes.append(track.bbox)
+
+
+                inside_count = len(inside_boxes)
+
+                # print(
+                #     f"TRACKS={len(track_result.tracks)} | "
+                #     f"INSIDE={inside_count}"
+                # )
+
+                inside_count = len(inside_boxes)
 
                 # 5. Persistent Occupancy Update (Pure Counting Line Room Count + Decoupled Area States)
                 occupancy_state = self._occupancy.apply(
@@ -205,18 +251,22 @@ class Pipeline:
                     approximation=approx,
                     left_area_count=left_area_cnt,
                     right_area_count=right_area_cnt,
+                    tracked_boxes=inside_boxes,
+                    )
+                app_state.occupancy = occupancy_state.occupancy_count
+                # print(f"APP STATE OCCUPANCY = {app_state.occupancy}")
+                if self.classroom_controller:
+                    self.classroom_controller.update(
+                    total_occupancy=occupancy_state.occupancy_count,
+                    left_occupied=(
+                        occupancy_state.occupancy_count > 0
+                        and occupancy_state.left_area_state.value == "OCCUPIED"
+                    ),
+                    right_occupied=(
+                        occupancy_state.occupancy_count > 0
+                        and occupancy_state.right_area_state.value == "OCCUPIED"
+                    ),
                 )
-                self.classroom_controller.update(
-                total_occupancy=occupancy_state.occupancy_count,
-                left_occupied=(
-                    occupancy_state.occupancy_count > 0
-                    and occupancy_state.left_area_state.value == "OCCUPIED"
-                ),
-                right_occupied=(
-                    occupancy_state.occupancy_count > 0
-                    and occupancy_state.right_area_state.value == "OCCUPIED"
-                ),
-            )
                 
 
                 # 6. Visualize

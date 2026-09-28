@@ -2,7 +2,7 @@
 # Copy this file to cameras.yaml and replace placeholders with actual credentials.
 
 frame_extraction:
-  fps: 2
+  fps: 7
   resize:
     enabled: false
     width: 1280
@@ -18,14 +18,14 @@ connection:
   max_retry_delay: 30
 
 cameras:
-  "A14-419":
+  "A12-425":
     name: "Machine Learning Lab"
-    username: "GCOERC"
-    password: "engg@123"
-    rtsp_url: "rtsp://GCOERC:engg@123@10.15.1.188:554/cam/realmonitor?channel=14&subtype=0"
+    username: ""
+    password: ""
+    rtsp_url: "rtsp://:@10.15.1.188:554/cam/realmonitor?channel=12&subtype=0"
 
   # "A14-420":
   #   name: "Computer Lab"
-  #   username: "GCOERC"
-  #   password: "engg@123"
-  #   rtsp_url: "rtsp://GCOERC:engg@123@10.15.1.188:554/cam/realmonitor?channel=1&subtype=0"
+  #   username: ""
+  #   password: ""
+  #   rtsp_url: ""

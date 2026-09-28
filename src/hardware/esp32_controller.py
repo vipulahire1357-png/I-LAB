@@ -1,9 +1,11 @@
 import requests
 
+from src.hardware.esp32_discovery import discover_esp32
+
 
 class ESP32Controller:
 
-    def __init__(self, ip_address):
+    def __init__(self, ip_address=None):
         self.ip_address = ip_address
 
         # Last state successfully sent to ESP32
@@ -21,6 +23,15 @@ class ESP32Controller:
         # If nothing changed, don't send another request
         if current_state == self.last_state:
             return
+
+        # If we don't have an IP, try discovery
+        if self.ip_address is None:
+            print("ESP32 IP not available. Searching...")
+            self.ip_address = discover_esp32()
+
+            if self.ip_address is None:
+                print("ESP32 not found.")
+                return
 
         # ESP32 control URL
         url = f"http://{self.ip_address}/control"
@@ -48,21 +59,43 @@ class ESP32Controller:
             )
 
             # Save state only if request succeeded
-            self.last_state = current_state
+            if response.status_code == 200:
+                self.last_state = current_state
 
         except requests.RequestException as e:
 
-            # ESP32 unavailable → don't stop the model
             print(f"ESP32 connection failed: {e}")
 
+            # Try to find ESP32 again
+            print("Searching for ESP32 again...")
 
-# Temporary test
-if __name__ == "__main__":
+            new_ip = discover_esp32()
 
-    esp32 = ESP32Controller("192.168.43.75")
+            if new_ip is not None:
 
-    esp32.set_state(
-        lights=1,
-        left_fans=0,
-        right_fans=0
-    )
+                self.ip_address = new_ip
+
+                print(f"ESP32 new IP found: {self.ip_address}")
+
+                # Retry the same command once
+                try:
+                    response = requests.get(
+                        f"http://{self.ip_address}/control",
+                        params=params,
+                        timeout=2
+                    )
+
+                    print(
+                        f"ESP32 retry → Status: {response.status_code}"
+                    )
+
+                    if response.status_code == 200:
+                        self.last_state = current_state
+
+                except requests.RequestException as retry_error:
+                    print(
+                        f"ESP32 retry failed: {retry_error}"
+                    )
+
+            else:
+                print("ESP32 could not be rediscovered.")

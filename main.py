@@ -19,8 +19,9 @@ Usage
     # Enable live preview window
     python main.py --show
 """
-
 from __future__ import annotations
+import threading
+from src.api_server import start_api_server
 
 import argparse
 import logging
@@ -73,7 +74,7 @@ def parse_args() -> argparse.Namespace:
         help="Path to output processed video file (overrides config/config.yaml)",
     )
     parser.add_argument(
-        "--show",
+        "--show",  
         "-s",
         action="store_true",
         help="Display live OpenCV preview window during processing",
@@ -220,6 +221,14 @@ def main() -> int:
             print(f"[INFO] Using Video File: {input_path}")
 
         pipeline = Pipeline(resolved_config, video_source=video_source)
+        api_thread = threading.Thread(
+            target=start_api_server,
+            daemon=True
+        )
+
+        api_thread.start()
+
+
         pipeline.run()
         return 0
 
