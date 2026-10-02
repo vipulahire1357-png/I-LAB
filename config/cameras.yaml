@@ -18,11 +18,11 @@ connection:
   max_retry_delay: 30
 
 cameras:
-  "A12-425":
+  "A14-419":
     name: "Machine Learning Lab"
-    username: ""
-    password: ""
-    rtsp_url: "rtsp://:@10.15.1.188:554/cam/realmonitor?channel=12&subtype=0"
+    username: "GCOERC"
+    password: "engg@123"
+    rtsp_url: rtsp://GCOERC:engg@123@10.15.1.188:554/cam/realmonitor?channel=14&subtype=0
 
   # "A14-420":
   #   name: "Computer Lab"
