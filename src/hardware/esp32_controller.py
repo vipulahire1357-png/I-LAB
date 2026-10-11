@@ -11,14 +11,17 @@ class ESP32Controller:
         # Last state successfully sent to ESP32
         self.last_state = None
 
-    def set_state(self, lights, left_fans, right_fans):
+    def set_state(self,lights,fan1,fan2,fan3, fan4):
 
         # Create current state
         current_state = (
             int(lights),
-            int(left_fans),
-            int(right_fans)
-        )
+            int(fan1),
+            int(fan2),
+            int(fan3),
+            int(fan4)
+
+                )
 
         # If nothing changed, don't send another request
         if current_state == self.last_state:
@@ -39,8 +42,10 @@ class ESP32Controller:
         # Data to send
         params = {
             "lights": current_state[0],
-            "left": current_state[1],
-            "right": current_state[2],
+            "fan1": current_state[1],
+            "fan2": current_state[2],
+            "fan3": current_state[3],
+            "fan4": current_state[4],
         }
 
         try:
@@ -53,8 +58,10 @@ class ESP32Controller:
 
             print(
                 f"ESP32 → Lights: {current_state[0]} | "
-                f"Left Fans: {current_state[1]} | "
-                f"Right Fans: {current_state[2]} | "
+                f"FAN1: {current_state[1]} | "
+                f"FAN2: {current_state[2]} | "
+                f"FAN3: {current_state[3]} | "
+                f"FAN4: {current_state[4]} | "
                 f"Status: {response.status_code}"
             )
 

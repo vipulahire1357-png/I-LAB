@@ -7,6 +7,7 @@ while managing video encoding and metrics collection.
 """
 from __future__ import annotations
 from src.hardware.classroom_controller import ClassroomController
+from src.fan_zones import FanZoneManager
 from src.app_state import app_state
 
 import logging
@@ -60,6 +61,7 @@ class Pipeline:
         
         # ESP32 controller handles IP discovery automatically
         self.classroom_controller = ClassroomController()
+        self.fan_zone_manager = FanZoneManager()
 
     def run(self) -> PipelineMetrics:
         """Execute the pipeline on the input video until completion or interruption.
@@ -210,12 +212,25 @@ class Pipeline:
 
                 x1_line, y1_line = line_start
                 x2_line, y2_line = line_end
-
+                zones = []
                 for track in track_result.tracks:
                     x1, y1, x2, y2 = track.bbox
 
                     foot_x = (x1 + x2) / 2
                     foot_y = y2
+                    zone = self.fan_zone_manager.get_zone_from_bottom(
+                        track.bbox,
+                        actual_w,
+                        actual_h
+                    )
+                    
+
+                    if zone:
+                        zones.append(zone)
+                        # print(
+                        #     f"Track {track.track_id} → {zone} "
+                        #     f"Foot=({int(foot_x)}, {int(foot_y)})"
+                        # )
 
                     cross_product = (
                         (x2_line - x1_line) * (foot_y - y1_line)
@@ -234,7 +249,16 @@ class Pipeline:
 
                     if is_inside:
                         inside_boxes.append(track.bbox)
-
+                fan1_occupied = "FAN1" in zones
+                fan2_occupied = "FAN2" in zones
+                fan3_occupied = "FAN3" in zones
+                fan4_occupied = "FAN4" in zones
+                print(
+                f"FAN1={fan1_occupied} | "
+                f"FAN2={fan2_occupied} | "
+                f"FAN3={fan3_occupied} | "
+                f"FAN4={fan4_occupied}"
+            )
 
                 inside_count = len(inside_boxes)
 
@@ -266,7 +290,11 @@ class Pipeline:
                         occupancy_state.occupancy_count > 0
                         and occupancy_state.right_area_state.value == "OCCUPIED"
                     ),
-                )
+                    fan1_occupied=fan1_occupied,
+                    fan2_occupied=fan2_occupied,
+                    fan3_occupied=fan3_occupied,
+                    fan4_occupied=fan4_occupied,
+                            )
                 
 
                 # 6. Visualize
@@ -279,6 +307,8 @@ class Pipeline:
                     counting_config=self._config.counting,
                     fps=recent_fps,
                 )
+                # Draw fan zones
+                annotated = self.fan_zone_manager.draw_zones(annotated)
                 t_render = (time.monotonic() - t0) * 1000.0
 
                 # 7. Write Frame

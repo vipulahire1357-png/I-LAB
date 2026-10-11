@@ -69,8 +69,8 @@ tracking:
 #   If left null, auto-computed perpendicular to the counting line at its midpoint.
 # perpendicular_line_length: length of auto-computed perpendicular line (pixels).
 counting:
-  line_start: [0, 80]
-  line_end: [1440, 1080]
+  line_start: [0, 400]
+  line_end: [1440, 1630]
   inside_direction: "positive"
   hysteresis_distance: 12.0
   perpendicular_line_start: [1360, 0]
